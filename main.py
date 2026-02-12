@@ -4,6 +4,8 @@ from contextlib import redirect_stdout
 from io import StringIO
 from typing import Any, Callable, TypedDict
 
+import pandas as pd
+
 from anthropic import AsyncAnthropic
 from anthropic.types import MessageParam, ToolUnionParam
 
@@ -220,8 +222,31 @@ async def main(concurrent: bool = True):
 
     # Run the test 10 times and track success rate
     num_runs = 10
-    expected_answer = 8769
-    prompt = "Calculate (2^10 + 3^5) * 7 - 100. Use the python_expression tool and then submit the answer."
+    url = "https://raw.githubusercontent.com/eyowhite/Messy-dataset/refs/heads/main/cleaned_healthcare_messy_data.csv"
+    expected_answer = pd.read_csv(url).to_csv(index=False)
+    prompt = """Download the CSV dataset https://raw.githubusercontent.com/eyowhite/Messy-dataset/refs/heads/main/cleaned_healthcare_messy_data.csv using pandas.
+
+IMPORTANT: Never use chained inplace operations like `df[col].method(value, inplace=True)`. Instead use `df[col] = df[col].method(value)` or `df.method({col: value}, inplace=True)`.
+
+Clean it by following these steps:
+1. Loading the Dataset:
+-  The dataset is loaded using Pandas.
+2. Stripping Leading/Trailing Spaces:
+- Unnecessary spaces in string columns are removed.
+3. Correcting Non-Numeric Values:
+- Non-numeric values in numeric columns (e.g., Age) are corrected.
+4. Standardizing Date Formats:
+- The Visit Date column is standardized to a consistent format.
+5. Handling Missing Values:
+- Missing values are filled with appropriate defaults or statistical measures.
+6. Rounding and Converting Columns:
+- The Age and Cholesterol columns are rounded and converted to integers to remove decimal places."
+7. Removing Duplicates:
+- Duplicate rows are identified and removed.
+8. Detecting Outliers:
+- Outliers are detected using various statistical methods (e.g., Z-score, IQR).
+
+Finally, submit the cleaned DataFrame as CSV text using df.to_csv(index=False)."""
 
     execution_mode = "concurrently" if concurrent else "sequentially"
     print(f"Running {num_runs} test iterations {execution_mode}...")
@@ -241,22 +266,20 @@ async def main(concurrent: bool = True):
         for i in range(num_runs)
     ]
 
+    # Process results as they complete
+    results = []
     # Run concurrently or sequentially based on the flag
     if concurrent:
-        # Process results as they complete
-        results = []
         for coro in asyncio.as_completed(tasks):
             result = await coro
             results.append(result)
     else:
-        # Run sequentially by awaiting each task in order
-        results = []
         for task in tasks:
             result = await task
             results.append(result)
 
     # Count successes
-    successes = sum(1 for _, success, _ in results)
+    successes = len(results)
 
     # Calculate and display pass rate
     pass_rate = (successes / num_runs) * 100
